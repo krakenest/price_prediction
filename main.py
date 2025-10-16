@@ -606,11 +606,11 @@ def main_train():
 
     upsert_rows(preds, trained=False)
     # Plot each asset (your existing plotting util)
-    for a in ["btc", "eth", "xaut", "sol"]:
-        try:
-            plot_forecast(df, preds, asset=a)
-        except Exception as e:
-            print(f"plot_forecast failed for {a}: {e}")
+    # for a in ["btc", "eth", "xaut", "sol"]:
+    #     try:
+    #         plot_forecast(df, preds, asset=a)
+    #     except Exception as e:
+    #         print(f"plot_forecast failed for {a}: {e}")
             
     print(f"{TABLE}: prepared {len(preds)} 5m forecast timestamps (is_trained=false)")
 
