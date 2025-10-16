@@ -1,0 +1,11 @@
+# Core dependencies for price_sampler_offset_hist_1m.py
+requests==2.32.3
+SQLAlchemy==2.0.35
+scikit-learn
+pandas
+numpy
+xgboost
+torch
+matplotlib
+python-dotenv
+psycopg2-binary
