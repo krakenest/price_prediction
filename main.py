@@ -31,7 +31,7 @@ CHUNK_DAYS = 7
 
 DEFAULT_HORIZON_STEPS = 295
 DEFAULT_LOOKBACK = 120
-DEFAULT_EPOCHS = 40
+DEFAULT_EPOCHS = 100
 DEFAULT_LSTM_HIDDEN = 96
 DEFAULT_LSTM_LAYERS = 2
 DEFAULT_LR = 1e-3
@@ -191,6 +191,7 @@ def main_fetch():
         buckets[row_ts][key] = price
 
     for s, e in iter_week_slices(start, end):
+        print(f"{TABLE}: fetching week slice [{s.isoformat()} .. {e.isoformat()})")
         week_rows = 0
         buckets: dict[dt.datetime, dict[str, float]] = defaultdict(dict)
         for data_block in fetch_quotes_5m_chunked(s, e, convert="USD"):
@@ -525,6 +526,22 @@ def train_xgb(feats: np.ndarray, tgts: np.ndarray) -> XGBRegressor:
 
     return xgb
 
+def _anchor_to_last(preds: np.ndarray, last_price: float) -> np.ndarray:
+    """Continuity fix: make preds[0] == last_price, keep relative shape.
+    Prefer multiplicative anchoring for strictly-positive prices."""
+    preds = np.asarray(preds, dtype=float)
+    if not np.isfinite(last_price) or preds.size == 0 or not np.isfinite(preds[0]):
+        return preds
+
+    # multiplicative (good for prices, preserves ratios)
+    if last_price > 0 and preds[0] > 0:
+        factor = last_price / preds[0]
+        return preds * factor
+
+    # additive fallback
+    shift = last_price - preds[0]
+    return preds + shift
+
 def hybrid_forecast(
     prices: np.ndarray,
     lstm_model: Seq2SeqLSTM,
@@ -535,7 +552,9 @@ def hybrid_forecast(
 ) -> np.ndarray:
     """Combine LSTM baseline with XGB-predicted residuals to produce final forecast."""
     window = prices[-lookback:]
+    last_price = float(np.asarray(window, dtype=float)[-1])
     lstm_future = lstm_predict_prices(lstm_model, scaler, window, horizon, lookback)
+
     tech = _technical_features(window)
     feats = np.column_stack([
         lstm_future,
@@ -546,7 +565,22 @@ def hybrid_forecast(
         np.linspace(0.0, 1.0, horizon)
     ])
     residuals = xgb.predict(feats)
-    return (lstm_future + residuals).astype(float)
+    preds = (lstm_future + residuals).astype(float)
+
+    # === NEW: continuity correction so the first forecast point connects to the last observed ===
+    preds = _anchor_to_last(preds, last_price)
+
+    # Optional: gentle clamp to avoid extreme first-step overshoot after anchoring
+    # (keeps first step within ±5% of last price; adjust if you want)
+    if last_price > 0 and np.isfinite(preds[0]):
+        max_jump = 0.05 * last_price
+        preds[0] = float(np.clip(preds[0], last_price - max_jump, last_price + max_jump))
+        # Smooth the next few steps slightly toward anchored level (optional)
+        if horizon >= 3:
+            alpha = np.linspace(0.6, 0.2, num=3)  # decay blend for first 3 steps
+            preds[:3] = alpha * preds[:3] + (1 - alpha) * last_price
+
+    return preds
 
 # ====== Orchestration over assets ======
 def train_and_forecast(df: pd.DataFrame, steps: int = DEFAULT_HORIZON_STEPS, lookback: int = DEFAULT_LOOKBACK):
@@ -598,7 +632,7 @@ def train_and_forecast(df: pd.DataFrame, steps: int = DEFAULT_HORIZON_STEPS, loo
 # ====== Train entrypoint ======
 def main_train():
     """Load data, train hybrid models per asset, write forecasts, and plot."""
-    df = load_training_data(day_back=15)
+    df = load_training_data(day_back=30)
     if df.empty:
         print("No training data found."); return
     steps = DEFAULT_HORIZON_STEPS
@@ -606,11 +640,11 @@ def main_train():
 
     upsert_rows(preds, trained=False)
     # Plot each asset (your existing plotting util)
-    # for a in ["btc", "eth", "xaut", "sol"]:
-    #     try:
-    #         plot_forecast(df, preds, asset=a)
-    #     except Exception as e:
-    #         print(f"plot_forecast failed for {a}: {e}")
+    for a in ["btc", "eth", "xaut", "sol"]:
+        try:
+            plot_forecast(df, preds, asset=a)
+        except Exception as e:
+            print(f"plot_forecast failed for {a}: {e}")
             
     print(f"{TABLE}: prepared {len(preds)} 5m forecast timestamps (is_trained=false)")
 
