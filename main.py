@@ -632,7 +632,7 @@ def train_and_forecast(df: pd.DataFrame, steps: int = DEFAULT_HORIZON_STEPS, loo
 # ====== Train entrypoint ======
 def main_train():
     """Load data, train hybrid models per asset, write forecasts, and plot."""
-    df = load_training_data(day_back=30)
+    df = load_training_data(day_back=60)
     if df.empty:
         print("No training data found."); return
     steps = DEFAULT_HORIZON_STEPS
