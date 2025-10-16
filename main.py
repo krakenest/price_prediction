@@ -31,7 +31,7 @@ CHUNK_DAYS = 7
 
 DEFAULT_HORIZON_STEPS = 295
 DEFAULT_LOOKBACK = 120
-DEFAULT_EPOCHS = 100
+DEFAULT_EPOCHS = 40
 DEFAULT_LSTM_HIDDEN = 96
 DEFAULT_LSTM_LAYERS = 2
 DEFAULT_LR = 1e-3
@@ -640,11 +640,11 @@ def main_train():
 
     upsert_rows(preds, trained=False)
     # Plot each asset (your existing plotting util)
-    for a in ["btc", "eth", "xaut", "sol"]:
-        try:
-            plot_forecast(df, preds, asset=a)
-        except Exception as e:
-            print(f"plot_forecast failed for {a}: {e}")
+    # for a in ["btc", "eth", "xaut", "sol"]:
+    #     try:
+    #         plot_forecast(df, preds, asset=a)
+    #     except Exception as e:
+    #         print(f"plot_forecast failed for {a}: {e}")
             
     print(f"{TABLE}: prepared {len(preds)} 5m forecast timestamps (is_trained=false)")
 
